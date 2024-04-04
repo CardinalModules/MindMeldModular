@@ -8,8 +8,12 @@
 
 #pragma once
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>
+#else
 #include <thread>
 #include <condition_variable>
+#endif
 #include "osdialog.h"
 #include "Channel.hpp"
 
@@ -37,11 +41,16 @@ class PresetAndShapeManager {
 	int workType[8] = {};// this value is not used
 	bool withHistory[8];
 	int8_t requestWork[8] = {};
+#ifdef __EMSCRIPTEN__
+	long workerId;
+	static void worker_cb(void* userData);
+#else
 	std::condition_variable cv;// https://thispointer.com//c11-multithreading-part-7-condition-variables-explained/
 	std::mutex mtx;
 	std::thread worker;// http://www.cplusplus.com/reference/thread/thread/thread/
 	bool requestStop = false;
 	Context* context;
+#endif
 		
 	// other
 	PackedBytes4* miscSettings3;
@@ -54,11 +63,15 @@ class PresetAndShapeManager {
 	
 	
 	~PresetAndShapeManager() {
+#ifdef __EMSCRIPTEN__
+		emscripten_clear_interval(workerId);
+#else
 		std::unique_lock<std::mutex> lk(mtx);
 		requestStop = true;
 		lk.unlock();
 		cv.notify_one();
 		worker.join();
+#endif
 	}
 	
 
@@ -68,7 +81,9 @@ class PresetAndShapeManager {
 	void executeIfStaged(int c) {
 		if (requestWork[c] == WS_STAGED) {
 			requestWork[c] = WS_TODO;
+#ifndef __EMSCRIPTEN__
 			cv.notify_one();
+#endif
 		}
 	}
 	void executeAllIfStaged() {

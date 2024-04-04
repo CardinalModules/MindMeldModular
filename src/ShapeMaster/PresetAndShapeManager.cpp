@@ -186,7 +186,9 @@ void PresetAndShapeManager::executeOrStageWorkload(int c, int _workType, bool _w
 				workType[c] = _workType;
 				withHistory[c] = _withHistory;
 				requestWork[c] = WS_TODO;
+#ifndef __EMSCRIPTEN__
 				cv.notify_one();
+#endif
 			}
 		}
 	}
@@ -196,18 +198,38 @@ void PresetAndShapeManager::executeOrStageWorkload(int c, int _workType, bool _w
 			workType[c] = _workType;
 			withHistory[c] = false;
 			requestWork[c] = WS_TODO;
+#ifndef __EMSCRIPTEN__
 			cv.notify_one();
+#endif
 		}
 	}
 }
 
 
-PresetAndShapeManager::PresetAndShapeManager() : worker(&PresetAndShapeManager::file_worker, this) {
+PresetAndShapeManager::PresetAndShapeManager()
+#ifdef __EMSCRIPTEN__
+	: workerId(emscripten_set_interval(worker_cb, 500, this)) {}
+#else
+	: worker(&PresetAndShapeManager::file_worker, this)
+{
 	context = contextGet();
 }
+#endif
 
+#ifdef __EMSCRIPTEN__
+void PresetAndShapeManager::worker_cb(void *userData)
+{
+	((PresetAndShapeManager*)userData)->file_worker();
+}
+#endif
 
 void PresetAndShapeManager::file_worker() {
+#ifdef __EMSCRIPTEN__
+	if (!(requestWork[0] == WS_TODO || requestWork[1] == WS_TODO ||
+			requestWork[2] == WS_TODO || requestWork[3] == WS_TODO ||
+			requestWork[4] == WS_TODO || requestWork[5] == WS_TODO ||
+			requestWork[6] == WS_TODO || requestWork[7] == WS_TODO)) {
+#else
 	contextSet(context);
 	random::init();// Rack doc says to call once per thread, or else random::u32() etc will always return 0
 	while (true) {
@@ -220,6 +242,7 @@ void PresetAndShapeManager::file_worker() {
 		}
 		lk.unlock();
 		if (requestStop) break;
+#endif
 		
 		for (int chan = 0; chan < 8; chan++) {
 			if (requestWork[chan] == WS_TODO) {		

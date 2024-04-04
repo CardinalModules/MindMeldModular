@@ -7,7 +7,11 @@
 
 
 #include "EqWidgets.hpp"
+#ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>
+#else
 #include <thread>
+#endif
 
 
 struct EqMaster : Module {
@@ -75,8 +79,12 @@ struct EqMaster : Module {
 	bool requestWork = false;
 	int requestPage = 0;
 	int32_t lastTrackMove = 0;
+#ifdef __EMSCRIPTEN__
+	long workerId = 0;
+#else
 	std::condition_variable cv;// https://thispointer.com//c11-multithreading-part-7-condition-variables-explained/
 	std::thread worker;// http://www.cplusplus.com/reference/thread/thread/thread/
+#endif
 	
 	int getSelectedTrack() {
 		return (int)(params[TRACK_PARAM].getValue() + 0.5f);
@@ -110,7 +118,13 @@ struct EqMaster : Module {
 	}
 	
 		
-	EqMaster() : worker(&EqMaster::worker_thread, this) {
+	EqMaster()
+#ifdef __EMSCRIPTEN__
+		: workerId(emscripten_set_interval(worker_cb, 1000 / 30, this))
+#else
+		: worker(&EqMaster::worker_thread, this)
+#endif
+	{
 		config(NUM_EQ_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 		
 		rightExpander.producerMessage = &expMessages[0];
@@ -167,11 +181,15 @@ struct EqMaster : Module {
 	}
   
 	~EqMaster() {
+#ifdef __EMSCRIPTEN__
+		emscripten_clear_interval(workerId);
+#else
 		std::unique_lock<std::mutex> lk(m);
 		requestStop = true;
 		lk.unlock();
 		cv.notify_one();
 		worker.join();
+#endif
 		
 		pffft_destroy_setup(ffts);
 		pffft_aligned_free(fftIn[0]);
@@ -532,10 +550,19 @@ struct EqMaster : Module {
 	}
 	
 	
+#ifdef __EMSCRIPTEN__
+	static void worker_cb(void *userData)
+	{
+		((EqMaster*)userData)->worker_thread();
+	}
+#endif
 	
 	void worker_thread() {
 		static const float vertScaling = 1.1f;
 		static const float vertOffset = 10.0f;
+#ifdef __EMSCRIPTEN__
+		if (requestWork && !requestStop) {
+#else
 		while (true) {
 			std::unique_lock<std::mutex> lk(m);
 			while (!requestWork && !requestStop) {
@@ -543,6 +570,7 @@ struct EqMaster : Module {
 			}
 			lk.unlock();
 			if (requestStop) break;
+#endif
 			
 			// compute fft
 			pffft_transform_ordered(ffts, fftIn[requestPage], fftOut, NULL, PFFFT_FORWARD);
@@ -703,7 +731,9 @@ struct EqMaster : Module {
 								else {
 									requestPage = page;
 									requestWork = true;
+#ifndef __EMSCRIPTEN__
 									cv.notify_one();
+#endif
 								}
 								page++;
 								if (page >= 3) {
