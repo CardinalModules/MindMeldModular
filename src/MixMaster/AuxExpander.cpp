@@ -609,7 +609,7 @@ struct AuxExpander : Module {
 					globalSends = clamp(globalSends, 0.0f, maxAGGlobSendFader);
 					globalSendsWithCV = globalSends;// can put here since unused when cv disconnected
 				}
-				globalSends = simd::pow<simd::float_4>(globalSends, GlobalConst::globalAuxSendScalingExponent);
+				globalSends = simd::pow<simd::float_4>(globalSends, (float)GlobalConst::globalAuxSendScalingExponent);
 			
 				//   Indiv mute sends (20 or 10 instances)				
 				for (int gi = 0; gi < (N_TRK + N_GRP); gi++) {
